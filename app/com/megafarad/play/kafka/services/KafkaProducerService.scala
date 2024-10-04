@@ -1,25 +1,30 @@
-package com.megafarad.play.kafka
-import org.apache.kafka.clients.producer.{Callback, KafkaProducer, ProducerConfig, ProducerRecord, RecordMetadata}
-import org.apache.kafka.common.serialization.StringSerializer
+package com.megafarad.play.kafka.services
+
 import com.codahale.metrics.{Meter, MetricRegistry}
+import org.apache.kafka.clients.producer._
 import play.api.Configuration
 
-import scala.concurrent.{ExecutionContext, Future, Promise}
-import scala.jdk.CollectionConverters._
 import java.util.Properties
+import scala.concurrent.{ExecutionContext, Future, Promise}
 
-class KafkaProducerService[K, V](config: Configuration, metrics: MetricRegistry)(implicit ec: ExecutionContext) {
+class KafkaProducerService[K, V](config: Configuration,
+                                 producerConfig: Configuration,
+                                 metrics: MetricRegistry)(implicit ec: ExecutionContext) {
 
   // Extract producer-specific configurations
   val bootstrapServers: String = config.get[String]("kafka.bootstrap.servers")
-  val acks: String = config.getOptional[String]("kafka.acks").getOrElse("all") // default to 'all' for safety
-  val retries: Int = config.getOptional[Int]("kafka.retries").getOrElse(3)
-  val batchSize: Int = config.getOptional[Int]("kafka.batch.size").getOrElse(16384)
-  val lingerMs: Int = config.getOptional[Int]("kafka.linger.ms").getOrElse(1)
+  val acks: String = producerConfig.getOptional[String]("acks").getOrElse("all") // default to 'all' for safety
+  val retries: Int = producerConfig.getOptional[Int]("retries").getOrElse(3)
+  val batchSize: Int = producerConfig.getOptional[Int]("batch.size").getOrElse(16384)
+  val lingerMs: Int = producerConfig.getOptional[Int]("linger.ms").getOrElse(1)
+  val keySerializer: String = producerConfig.get[String]("key.serializer")
+  val valueSerializer: String = producerConfig.get[String]("value.serializer")
+  val metricsName: String = producerConfig.get[String]("metrics.name")
+
 
   // Metrics to track messages sent and failed
-  val messagesSent: Meter = metrics.meter("kafka.producer.messages-sent")
-  val messagesFailed: Meter = metrics.meter("kafka.producer.messages-failed")
+  val messagesSent: Meter = metrics.meter(s"kafka.$metricsName.messages-sent")
+  val messagesFailed: Meter = metrics.meter(s"kafka.$metricsName.messages-failed")
 
   // Create the Kafka producer
   val kafkaProducer: KafkaProducer[K, V] = createKafkaProducer()
@@ -31,8 +36,8 @@ class KafkaProducerService[K, V](config: Configuration, metrics: MetricRegistry)
     props.put(ProducerConfig.RETRIES_CONFIG, retries.toString)
     props.put(ProducerConfig.BATCH_SIZE_CONFIG, batchSize.toString)
     props.put(ProducerConfig.LINGER_MS_CONFIG, lingerMs.toString)
-    props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, classOf[StringSerializer].getName)
-    props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, classOf[StringSerializer].getName)
+    props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, keySerializer)
+    props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, valueSerializer)
 
     new KafkaProducer[K, V](props)
   }

@@ -1,10 +1,10 @@
-package com.megafarad.play.kafka
+package com.megafarad.play.kafka.services
 
 import com.codahale.metrics.{Gauge, Meter, MetricRegistry, Timer}
 import org.apache.kafka.clients.consumer.{ConsumerConfig, ConsumerRecord, KafkaConsumer, OffsetAndMetadata}
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerRecord}
 import org.apache.kafka.common.TopicPartition
-import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.actor.{ActorSystem, Cancellable}
 import play.api.inject.ApplicationLifecycle
 import play.api.{Configuration, Logging}
 
@@ -44,9 +44,14 @@ class KafkaConsumerService[K, V](messageHandlerService: KafkaMessageHandlerServi
   val pollTimer: Timer = metrics.timer(s"kafka.$groupId.poll-duration")
 
   // Create a Gauge to track consumer lag
-  val consumerLagGauge: Gauge[Long] = metrics.register(s"kafka.$groupId.consumer-lag", new Gauge[Long] {
-    override def getValue: Long = calculateConsumerLag()
-  })
+  val existingLagGauge: Gauge[_] = metrics.getGauges.get(s"kafka.$groupId.consumer-lag")
+  val consumerLagGauge: Gauge[Long] = if (existingLagGauge != null) {
+    existingLagGauge.asInstanceOf[Gauge[Long]]
+  } else {
+    metrics.register(s"kafka.$groupId.consumer-lag", new Gauge[Long] {
+      override def getValue: Long = calculateConsumerLag()
+    })
+  }
 
   // Kafka consumer instance
   val kafkaConsumer: KafkaConsumer[K, V] = createKafkaConsumer()
@@ -68,6 +73,7 @@ class KafkaConsumerService[K, V](messageHandlerService: KafkaMessageHandlerServi
     props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, keyDeserializer)
     props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, valueDeserializer)
     props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, autoOffsetReset)
+    props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false")
 
     new KafkaConsumer[K, V](props)
   }
@@ -80,12 +86,20 @@ class KafkaConsumerService[K, V](messageHandlerService: KafkaMessageHandlerServi
     pollKafkaWithRetries(attempt = 1)
   }
 
+  @volatile private var isRunning: Boolean = true
+
   startPolling()
 
   applicationLifecycle.addStopHook(() => Future {
+    stopPolling()
+    kafkaConsumer.wakeup()
     kafkaConsumer.close()
     deadLetterProducer.close()
   })
+
+  def stopPolling(): Unit = {
+    isRunning = false
+  }
 
   // Retry logic with exponential backoff
   private def pollKafkaWithRetries(attempt: Int): Unit = {
@@ -97,15 +111,18 @@ class KafkaConsumerService[K, V](messageHandlerService: KafkaMessageHandlerServi
         val lag = calculateConsumerLag()
         logger.info(s"Consumer lag: $lag messages")
 
-        scheduleNextPoll()
+        if (isRunning) scheduleNextPoll()
 
       case Failure(ex) if attempt <= maxRetries =>
         val backoffTime = baseDelay * math.pow(2, attempt - 1).toLong
         messagesRetried.mark()
-        logger.warn(s"Polling failed. Retrying in $backoffTime... (Attempt $attempt)", ex)
 
-        org.apache.pekko.pattern.after(backoffTime, system.scheduler) {
-          Future(pollKafkaWithRetries(attempt + 1))
+        if (isRunning) {
+          logger.warn(s"Polling failed. Retrying in $backoffTime... (Attempt $attempt)", ex)
+
+          org.apache.pekko.pattern.after(backoffTime, system.scheduler) {
+            Future(pollKafkaWithRetries(attempt + 1))
+          }
         }
 
       case Failure(ex) =>
@@ -113,11 +130,12 @@ class KafkaConsumerService[K, V](messageHandlerService: KafkaMessageHandlerServi
         pollKafka().map { records =>
           sendToDeadLetterTopic(records)
         }
+        if (isRunning) scheduleNextPoll()
     }
   }
 
   // Schedule the next poll after the polling interval
-  private def scheduleNextPoll(): Unit = {
+  private def scheduleNextPoll(): Cancellable = {
     system.scheduler.scheduleOnce(pollingInterval) {
       pollKafkaWithRetries(attempt = 1)
     }
@@ -130,6 +148,10 @@ class KafkaConsumerService[K, V](messageHandlerService: KafkaMessageHandlerServi
       Try {
         kafkaConsumer.poll(java.time.Duration.ofMillis(100)) // Poll Kafka
       } match {
+        case Failure(_: InterruptedException) =>
+          logger.info("Polling interrupted")
+          context.stop()
+          Future.successful(Iterable.empty)
         case Failure(exception) =>
           logger.error("Failure while polling Kafka: ", exception)
           context.stop() // Stop poll timer
@@ -137,7 +159,7 @@ class KafkaConsumerService[K, V](messageHandlerService: KafkaMessageHandlerServi
 
         case Success(records) =>
           context.stop() // Stop poll timer
-          logger.debug(s"Polled ${records.count()} records from Kafka.")
+          logger.info(s"Polled ${records.count()} records from Kafka.")
 
           // Process each record and return a Future
           val futures = records.asScala.map { record =>
@@ -184,13 +206,17 @@ class KafkaConsumerService[K, V](messageHandlerService: KafkaMessageHandlerServi
   // Calculate the consumer lag
   private def calculateConsumerLag(): Long = {
     val partitions = kafkaConsumer.assignment().asScala
-    kafkaConsumer.seekToEnd(partitions.asJava) // Get the latest offsets for each partition
-
-    // Calculate the lag for each partition
-    partitions.map { partition =>
+    val currentPositions = partitions.map(p => p -> kafkaConsumer.position(p)).toMap
+    kafkaConsumer.seekToEnd(partitions.asJava)
+    val lag = partitions.map { partition =>
       val latestOffset = kafkaConsumer.position(partition)
-      val committedOffset = kafkaConsumer.committed(Set(partition).asJava).get(partition).offset()
+      val committedOffset = Option(kafkaConsumer.committed(Set(partition).asJava).get(partition))
+        .map(_.offset()).getOrElse(0L)
       latestOffset - committedOffset
-    }.sum // Return the total lag across all partitions
+    }.sum
+    currentPositions.foreach { case (partition, position) =>
+      kafkaConsumer.seek(partition, position) // Restore original position
+    }
+    lag
   }
 }

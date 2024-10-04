@@ -1,4 +1,4 @@
-package com.megafarad.play.kafka
+package com.megafarad.play.kafka.services
 
 import scala.concurrent.Future
 

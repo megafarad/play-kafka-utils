@@ -1,5 +1,3 @@
 package com.megafarad.play.kafka.serialization
 
-class TestDeserializer {
-
-}
+class TestDeserializer extends JsonDeserializer[TestCaseClass]
