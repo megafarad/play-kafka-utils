@@ -1,7 +1,7 @@
 package com.megafarad.play.kafka.services
 
 import com.codahale.metrics.{Gauge, Meter, MetricRegistry, Timer}
-import org.apache.kafka.clients.consumer.{ConsumerConfig, ConsumerRecord, KafkaConsumer, OffsetAndMetadata}
+import org.apache.kafka.clients.consumer.{ConsumerConfig, ConsumerRecords, KafkaConsumer, OffsetAndMetadata}
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerRecord}
 import org.apache.kafka.common.TopicPartition
 import org.apache.pekko.actor.{ActorSystem, Cancellable}
@@ -103,34 +103,37 @@ class KafkaConsumerService[K, V](messageHandlerService: KafkaMessageHandlerServi
 
   // Retry logic with exponential backoff
   private def pollKafkaWithRetries(attempt: Int): Unit = {
-    pollKafka().onComplete {
-      case Success(_) =>
-        logger.info("Polling and message processing succeeded, updating consumer lag.")
+    (for {
+      records <- pollKafka()
+      _ <- processRecords(records).andThen {
+        case Failure(ex) if attempt <= maxRetries =>
+          val backoffTime = baseDelay * math.pow(2, attempt - 1).toLong
+          messagesRetried.mark()
 
-        // Update the consumer lag after successful message processing
-        val lag = calculateConsumerLag()
-        logger.info(s"Consumer lag: $lag messages")
+          if (isRunning) {
+            logger.warn(s"Polling failed. Retrying in $backoffTime... (Attempt $attempt)", ex)
 
-        if (isRunning) scheduleNextPoll()
-
-      case Failure(ex) if attempt <= maxRetries =>
-        val backoffTime = baseDelay * math.pow(2, attempt - 1).toLong
-        messagesRetried.mark()
-
-        if (isRunning) {
-          logger.warn(s"Polling failed. Retrying in $backoffTime... (Attempt $attempt)", ex)
-
-          org.apache.pekko.pattern.after(backoffTime, system.scheduler) {
-            Future(pollKafkaWithRetries(attempt + 1))
+            org.apache.pekko.pattern.after(backoffTime, system.scheduler) {
+              Future(pollKafkaWithRetries(attempt + 1))
+            }
           }
-        }
-
-      case Failure(ex) =>
-        logger.error(s"Polling failed after $maxRetries retries. Sending messages to dead-letter topic.", ex)
-        pollKafka().map { records =>
+        case Failure(ex) =>
+          logger.error(s"Polling failed after $maxRetries retries. Sending messages to dead-letter topic.", ex)
           sendToDeadLetterTopic(records)
-        }
-        if (isRunning) scheduleNextPoll()
+          if (isRunning) scheduleNextPoll()
+        case Success(_) =>
+          logger.info("Polling and message processing succeeded, updating consumer lag.")
+          // Update the consumer lag after successful message processing
+          val lag = calculateConsumerLag()
+          logger.info(s"Consumer lag: $lag messages")
+
+          if (isRunning) scheduleNextPoll()
+      }
+    } yield ()).onComplete {
+      case Failure(exception) =>
+        logger.error(s"Poll kafka with retries failed at attempt $attempt", exception)
+      case Success(_) =>
+        logger.debug(s"Kafka Polling Attempt $attempt Complete")
     }
   }
 
@@ -141,55 +144,54 @@ class KafkaConsumerService[K, V](messageHandlerService: KafkaMessageHandlerServi
     }
   }
 
-  // Poll Kafka for messages and process them
-  private def pollKafka(): Future[Iterable[ConsumerRecord[K, V]]] = {
-    val context = pollTimer.time() // Start timing the poll
+  private def pollKafka(): Future[ConsumerRecords[K, V]] = {
+    val context = pollTimer.time()
     Future {
       Try {
-        kafkaConsumer.poll(java.time.Duration.ofMillis(100)) // Poll Kafka
+        kafkaConsumer.poll(java.time.Duration.ofMillis(100))
       } match {
-        case Failure(_: InterruptedException) =>
-          logger.info("Polling interrupted")
-          context.stop()
-          Future.successful(Iterable.empty)
         case Failure(exception) =>
           logger.error("Failure while polling Kafka: ", exception)
-          context.stop() // Stop poll timer
-          Future.failed(exception) // Return a failed Future
-
+          context.stop()
+          throw exception
         case Success(records) =>
-          context.stop() // Stop poll timer
           logger.info(s"Polled ${records.count()} records from Kafka.")
+          context.stop()
+          records
+      }
+    }
+  }
 
-          // Process each record and return a Future
-          val futures = records.asScala.map { record =>
-            val processingContext = processingTimer.time() // Start timing message processing
-            messageHandlerService.processMessage(record.key(), record.value()).andThen {
-              case Success(_) =>
-                processingContext.stop() // Stop message processing timer
-                messagesProcessed.mark()
-                logger.info(s"Successfully processed message from topic=${record.topic()}, partition=${record.partition()}, offset=${record.offset()}, key=${record.key()}")
+  private def processRecords(records: ConsumerRecords[K, V]): Future[Unit] = {
+    val futures = records.asScala.map { record =>
+      val processingContext = processingTimer.time() // Start timing message processing
+      messageHandlerService.processMessage(record.key(), record.value()).andThen {
+        case Success(_) =>
+          processingContext.stop() // Stop message processing timer
+          messagesProcessed.mark()
+          logger.info(s"Successfully processed message from topic=${record.topic()}, partition=${record.partition()}, offset=${record.offset()}, key=${record.key()}")
 
-              case Failure(ex) =>
-                processingContext.stop() // Stop message processing timer
-                messagesFailed.mark()
-                logger.error(s"Failed to process message from topic=${record.topic()}, partition=${record.partition()}, offset=${record.offset()}, key=${record.key()}", ex)
-            }
-          }
-
-          // Return a Future once all message processing is done
-          Future.sequence(futures).map { _ =>
-            kafkaConsumer.commitSync() // Commit offsets after all messages are processed
-            logger.info("Offsets committed successfully.")
-            records.asScala // Return the records for further use
+        case Failure(ex) =>
+          processingContext.stop() // Stop message processing timer
+          messagesFailed.mark()
+          logger.error(s"Failed to process message from topic=${record.topic()}, partition=${record.partition()}, offset=${record.offset()}, key=${record.key()}", ex)
+          records.partitions().forEach {
+            partition =>
+              val lastOffset = records.records(partition).getLast.offset()
+              kafkaConsumer.seek(partition, lastOffset)
           }
       }
-    }.flatten // Flatten the Future to return a Future[Iterable[ConsumerRecord[K, V]]]
+    }
+    // Return a Future once all message processing is done
+    Future.sequence(futures).map { _ =>
+      kafkaConsumer.commitSync() // Commit offsets after all messages are processed
+      logger.info("Offsets committed successfully.")
+    }
   }
 
   // Send messages to the dead-letter topic
-  private def sendToDeadLetterTopic(records: Iterable[ConsumerRecord[K, V]]): Unit = {
-    records.foreach { record =>
+  private def sendToDeadLetterTopic(records: ConsumerRecords[K, V]): Unit = {
+    records.asScala.foreach { record =>
       logger.warn(s"Sending failed message with key=${record.key()} to dead-letter topic: $deadLetterTopic")
 
       // Publish the problematic message to the dead-letter topic
