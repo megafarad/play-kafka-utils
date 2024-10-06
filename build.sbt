@@ -17,4 +17,3 @@ libraryDependencies ++= Seq(
 )
 libraryDependencies += "com.typesafe" % "config" % "1.4.3"
 libraryDependencies += "io.github.embeddedkafka" %% "embedded-kafka" % "3.8.0" % Test
-//libraryDependencies += "org.mockito" % "mockito-core" % "5.14.1" % Test

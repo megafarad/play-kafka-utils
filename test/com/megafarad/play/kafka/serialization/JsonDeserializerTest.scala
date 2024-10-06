@@ -3,12 +3,12 @@ package com.megafarad.play.kafka.serialization
 import org.scalatestplus.play.PlaySpec
 import play.api.libs.json.Json
 
-class DeserializationTest extends PlaySpec {
+class JsonDeserializerTest extends PlaySpec {
 
   "JsonDeserializer" should {
     "correctly deserialize JSON to TestCaseClass" in {
       val testCaseClass = TestCaseClass("Test String", 10)
-      val deserializer = new TestDeserializer
+      val deserializer = new TestJsonDeserializer
       val jsonBytes = Json.toJson(testCaseClass).toString().getBytes
 
       val deserialized = deserializer.deserialize("test topic", jsonBytes)
@@ -17,7 +17,7 @@ class DeserializationTest extends PlaySpec {
     }
 
     "handle null input" in {
-      val deserializer = new TestDeserializer
+      val deserializer = new TestJsonDeserializer
 
       val deserialized = deserializer.deserialize("test topic", null)
 
