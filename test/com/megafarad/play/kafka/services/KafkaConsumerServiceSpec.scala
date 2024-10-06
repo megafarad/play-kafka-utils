@@ -52,12 +52,11 @@ class KafkaConsumerServiceSpec extends AnyWordSpec with BeforeAndAfterAll with M
           applicationLifecycle)
 
         //Assert
-        //TODO: I do not like this - at all. But "eventually" keeps failing with the error:
-        // Last failure message: Cannot invoke "scala.concurrent.Future.recoverWith(scala.PartialFunction,
-        // scala.concurrent.ExecutionContext)" because the return value of "scala.Function0.apply()" is null.
-        Thread.sleep(20000)
+        eventually(timeout(30.seconds)) {
+          Mockito.verify(messageHandlerService, Mockito.times(1)).processMessage(testKey, testValue)
+          succeed
+        }
 
-        Mockito.verify(messageHandlerService, Mockito.times(1)).processMessage(testKey, testValue)
 
         //Cleanup
         service.stopPolling()
