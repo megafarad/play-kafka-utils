@@ -201,6 +201,8 @@ class KafkaConsumerService[K, V](messageHandlerService: KafkaMessageHandlerServi
       kafkaConsumer.commitSync(Map(new TopicPartition(record.topic(), record.partition()) ->
         new OffsetAndMetadata(record.offset() + 1)).asJava)
 
+      kafkaConsumer.seek(new TopicPartition(record.topic(), record.partition()), new OffsetAndMetadata(record.offset() + 1))
+
       messagesDeadLettered.mark() // Track the number of dead-lettered messages
     }
   }
