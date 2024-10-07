@@ -3,7 +3,6 @@ package com.megafarad.play.kafka.services
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.ConfigFactory
 import io.github.embeddedkafka.EmbeddedKafka
-import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.serialization.{StringDeserializer, StringSerializer}
 import org.apache.pekko.actor.ActorSystem
@@ -15,12 +14,12 @@ import org.scalatestplus.mockito.MockitoSugar
 import play.api.inject.DefaultApplicationLifecycle
 import play.api.{Configuration, Logging}
 
-import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
+import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
 
-class KafkaConsumerServiceSpec extends AnyWordSpec with BeforeAndAfterAll with MockitoSugar with Logging
-  with ScalaFutures with Eventually with EmbeddedKafka {
+class KafkaConsumerServiceSpec extends AnyWordSpec with MockitoSugar with Logging with ScalaFutures with Eventually
+  with EmbeddedKafka {
 
   implicit val actorSystem: ActorSystem = ActorSystem("TestActorSystem")
   implicit val ec: ExecutionContext = actorSystem.dispatcher

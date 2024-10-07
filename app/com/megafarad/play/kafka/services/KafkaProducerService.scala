@@ -3,13 +3,15 @@ package com.megafarad.play.kafka.services
 import com.codahale.metrics.{Meter, MetricRegistry}
 import org.apache.kafka.clients.producer._
 import play.api.Configuration
+import play.api.inject.ApplicationLifecycle
 
 import java.util.Properties
 import scala.concurrent.{ExecutionContext, Future, Promise}
 
 class KafkaProducerService[K, V](config: Configuration,
                                  producerConfig: Configuration,
-                                 metrics: MetricRegistry)(implicit ec: ExecutionContext) {
+                                 metrics: MetricRegistry,
+                                 applicationLifecycle: ApplicationLifecycle)(implicit ec: ExecutionContext) {
 
   // Extract producer-specific configurations
   val bootstrapServers: String = config.get[String]("kafka.bootstrap.servers")
@@ -81,4 +83,8 @@ class KafkaProducerService[K, V](config: Configuration,
   def close(): Unit = {
     kafkaProducer.close()
   }
+
+  applicationLifecycle.addStopHook(() => Future {
+    close()
+  })
 }

@@ -2,7 +2,7 @@ package com.megafarad.play.kafka.services
 
 import com.codahale.metrics.{Gauge, Meter, MetricRegistry, Timer}
 import org.apache.kafka.clients.consumer.{ConsumerConfig, ConsumerRecords, KafkaConsumer, OffsetAndMetadata}
-import org.apache.kafka.clients.producer.{KafkaProducer, ProducerRecord}
+import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig, ProducerRecord}
 import org.apache.kafka.common.TopicPartition
 import org.apache.pekko.actor.{ActorSystem, Cancellable}
 import play.api.inject.ApplicationLifecycle
@@ -59,9 +59,9 @@ class KafkaConsumerService[K, V](messageHandlerService: KafkaMessageHandlerServi
 
   private def createDeadLetterProducer(): KafkaProducer[K, V] = {
     val props = new Properties()
-    props.put("bootstrap.servers", bootstrapServers)
-    props.put("key.serializer", keySerializer)
-    props.put("value.serializer", valueSerializer)
+    props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers)
+    props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, keySerializer)
+    props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, valueSerializer)
     new KafkaProducer[K, V](props)
   }
 
