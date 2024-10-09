@@ -73,6 +73,15 @@ class KafkaConsumerService[K, V](messageHandlerService: KafkaMessageHandlerServi
     props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers)
     props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, keySerializer)
     props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, valueSerializer)
+
+    securityProtocol.foreach(props.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, _))
+    saslMechanism.foreach(props.put(SaslConfigs.SASL_MECHANISM, _))
+    jaasConfig.foreach(props.put(SaslConfigs.SASL_JAAS_CONFIG, _))
+    trustStoreLocation.foreach(props.put(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG, _))
+    trustStorePassword.foreach(props.put(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG, _))
+    keystoreLocation.foreach(props.put(SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG, _))
+    keystorePassword.foreach(props.put(SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG, _))
+    keyPassword.foreach(props.put(SslConfigs.SSL_KEY_PASSWORD_CONFIG, _))
     new KafkaProducer[K, V](props)
   }
 
