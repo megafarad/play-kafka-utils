@@ -1,7 +1,9 @@
 package com.megafarad.play.kafka.services
 
 import com.codahale.metrics.{Meter, MetricRegistry}
+import org.apache.kafka.clients.CommonClientConfigs
 import org.apache.kafka.clients.producer._
+import org.apache.kafka.common.config.{SaslConfigs, SslConfigs}
 import play.api.Configuration
 import play.api.inject.ApplicationLifecycle
 
@@ -13,8 +15,17 @@ class KafkaProducerService[K, V](config: Configuration,
                                  metrics: MetricRegistry,
                                  applicationLifecycle: ApplicationLifecycle)(implicit ec: ExecutionContext) {
 
-  // Extract producer-specific configurations
   val bootstrapServers: String = config.get[String]("kafka.bootstrap.servers")
+  val securityProtocol: Option[String] = config.getOptional[String]("kafka.security.protocol")
+  val saslMechanism: Option[String] = config.getOptional[String]("kafka.sasl.mechanism")
+  val jaasConfig: Option[String] = config.getOptional[String]("kafka.sasl.jaas.config")
+  val trustStoreLocation: Option[String] = config.getOptional[String]("kafka.ssl.truststore.location")
+  val trustStorePassword: Option[String] = config.getOptional[String]("kafka.ssl.truststore.password")
+  val keystoreLocation: Option[String] = config.getOptional[String]("kafka.ssl.keystore.location")
+  val keystorePassword: Option[String] = config.getOptional[String]("kafka.ssl.keystore.password")
+  val keyPassword: Option[String] = config.getOptional[String]("kafka.ssl.key.password")
+
+  // Extract producer-specific configurations
   val acks: String = producerConfig.getOptional[String]("acks").getOrElse("all") // default to 'all' for safety
   val retries: Int = producerConfig.getOptional[Int]("retries").getOrElse(3)
   val batchSize: Int = producerConfig.getOptional[Int]("batch.size").getOrElse(16384)
@@ -40,6 +51,15 @@ class KafkaProducerService[K, V](config: Configuration,
     props.put(ProducerConfig.LINGER_MS_CONFIG, lingerMs.toString)
     props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, keySerializer)
     props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, valueSerializer)
+
+    securityProtocol.foreach(props.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, _))
+    saslMechanism.foreach(props.put(SaslConfigs.SASL_MECHANISM, _))
+    jaasConfig.foreach(props.put(SaslConfigs.SASL_JAAS_CONFIG, _))
+    trustStoreLocation.foreach(props.put(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG, _))
+    trustStorePassword.foreach(props.put(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG, _))
+    keystoreLocation.foreach(props.put(SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG, _))
+    keystorePassword.foreach(props.put(SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG, _))
+    keyPassword.foreach(props.put(SslConfigs.SSL_KEY_PASSWORD_CONFIG, _))
 
     new KafkaProducer[K, V](props)
   }

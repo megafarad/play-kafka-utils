@@ -1,9 +1,11 @@
 package com.megafarad.play.kafka.services
 
 import com.codahale.metrics.{Gauge, Meter, MetricRegistry, Timer}
+import org.apache.kafka.clients.CommonClientConfigs
 import org.apache.kafka.clients.consumer.{ConsumerConfig, ConsumerRecords, KafkaConsumer, OffsetAndMetadata}
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig, ProducerRecord}
 import org.apache.kafka.common.TopicPartition
+import org.apache.kafka.common.config.{SaslConfigs, SslConfigs}
 import org.apache.pekko.actor.{ActorSystem, Cancellable}
 import play.api.inject.ApplicationLifecycle
 import play.api.{Configuration, Logging}
@@ -21,10 +23,19 @@ class KafkaConsumerService[K, V](messageHandlerService: KafkaMessageHandlerServi
                                  applicationLifecycle: ApplicationLifecycle)(implicit system: ActorSystem, ec: ExecutionContext)
   extends Logging {
 
+  val bootstrapServers: String = config.get[String]("kafka.bootstrap.servers")
+  val securityProtocol: Option[String] = config.getOptional[String]("kafka.security.protocol")
+  val saslMechanism: Option[String] = config.getOptional[String]("kafka.sasl.mechanism")
+  val jaasConfig: Option[String] = config.getOptional[String]("kafka.sasl.jaas.config")
+  val trustStoreLocation: Option[String] = config.getOptional[String]("kafka.ssl.truststore.location")
+  val trustStorePassword: Option[String] = config.getOptional[String]("kafka.ssl.truststore.password")
+  val keystoreLocation: Option[String] = config.getOptional[String]("kafka.ssl.keystore.location")
+  val keystorePassword: Option[String] = config.getOptional[String]("kafka.ssl.keystore.password")
+  val keyPassword: Option[String] = config.getOptional[String]("kafka.ssl.key.password")
+
   // Extract consumer-specific configurations
   val groupId: String = consumerConfig.get[String]("group.id")
   val topics: Seq[String] = consumerConfig.get[Seq[String]]("topics")
-  val bootstrapServers: String = config.get[String]("kafka.bootstrap.servers")
   val keyDeserializer: String = consumerConfig.get[String]("key.deserializer")
   val valueDeserializer: String = consumerConfig.get[String]("value.deserializer")
   val keySerializer: String = consumerConfig.get[String]("key.serializer")
@@ -74,6 +85,15 @@ class KafkaConsumerService[K, V](messageHandlerService: KafkaMessageHandlerServi
     props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, valueDeserializer)
     props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, autoOffsetReset)
     props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false")
+
+    securityProtocol.foreach(props.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, _))
+    saslMechanism.foreach(props.put(SaslConfigs.SASL_MECHANISM, _))
+    jaasConfig.foreach(props.put(SaslConfigs.SASL_JAAS_CONFIG, _))
+    trustStoreLocation.foreach(props.put(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG, _))
+    trustStorePassword.foreach(props.put(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG, _))
+    keystoreLocation.foreach(props.put(SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG, _))
+    keystorePassword.foreach(props.put(SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG, _))
+    keyPassword.foreach(props.put(SslConfigs.SSL_KEY_PASSWORD_CONFIG, _))
 
     new KafkaConsumer[K, V](props)
   }
