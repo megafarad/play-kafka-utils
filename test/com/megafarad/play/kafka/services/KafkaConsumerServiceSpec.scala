@@ -1,13 +1,12 @@
 package com.megafarad.play.kafka.services
 
-import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.ConfigFactory
 import io.github.embeddedkafka.EmbeddedKafka
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.serialization.{StringDeserializer, StringSerializer}
 import org.apache.pekko.actor.ActorSystem
 import org.mockito.Mockito
-import org.scalatest.BeforeAndAfterAll
 import org.scalatest.concurrent.{Eventually, ScalaFutures}
 import org.scalatest.wordspec.AnyWordSpec
 import org.scalatestplus.mockito.MockitoSugar
@@ -29,7 +28,7 @@ class KafkaConsumerServiceSpec extends AnyWordSpec with MockitoSugar with Loggin
   val testValue = "test.value"
   val config: Configuration = Configuration(ConfigFactory.parseResources("reference.conf"))
   val consumerConfig: Configuration = config.get[Configuration]("kafka.consumer1")
-  val metrics = new MetricRegistry()
+  val metrics = new SimpleMeterRegistry()
   val applicationLifecycle = new DefaultApplicationLifecycle()
   implicit val serializer: StringSerializer = new StringSerializer()
   implicit val deserializer: StringDeserializer = new StringDeserializer()

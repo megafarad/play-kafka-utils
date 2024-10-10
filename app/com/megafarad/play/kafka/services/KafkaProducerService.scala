@@ -1,6 +1,6 @@
 package com.megafarad.play.kafka.services
 
-import com.codahale.metrics.{Meter, MetricRegistry}
+import io.micrometer.core.instrument.{Counter, MeterRegistry, Tag}
 import org.apache.kafka.clients.CommonClientConfigs
 import org.apache.kafka.clients.producer._
 import org.apache.kafka.common.config.{SaslConfigs, SslConfigs}
@@ -8,11 +8,13 @@ import play.api.Configuration
 import play.api.inject.ApplicationLifecycle
 
 import java.util.Properties
+import scala.collection.immutable
 import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.jdk.CollectionConverters._
 
 class KafkaProducerService[K, V](config: Configuration,
                                  producerConfig: Configuration,
-                                 metrics: MetricRegistry,
+                                 metrics: MeterRegistry,
                                  applicationLifecycle: ApplicationLifecycle)(implicit ec: ExecutionContext) {
 
   val bootstrapServers: String = config.get[String]("kafka.bootstrap.servers")
@@ -32,12 +34,13 @@ class KafkaProducerService[K, V](config: Configuration,
   val lingerMs: Int = producerConfig.getOptional[Int]("linger.ms").getOrElse(1)
   val keySerializer: String = producerConfig.get[String]("key.serializer")
   val valueSerializer: String = producerConfig.get[String]("value.serializer")
-  val metricsName: String = producerConfig.get[String]("metrics.name")
-
+  val metricsTags: immutable.Iterable[Tag] = producerConfig.get[Map[String, String]]("metrics.tags").map {
+    case (key, value) => Tag.of(key, value)
+  }
 
   // Metrics to track messages sent and failed
-  val messagesSent: Meter = metrics.meter(s"kafka.$metricsName.messages-sent")
-  val messagesFailed: Meter = metrics.meter(s"kafka.$metricsName.messages-failed")
+  val messagesSent: Counter = Counter.builder("kafka.messages-sent").tags(metricsTags.asJava).register(metrics)
+  val messagesFailed: Counter = Counter.builder("kafka.messages-failed").tags(metricsTags.asJava).register(metrics)
 
   // Create the Kafka producer
   val kafkaProducer: KafkaProducer[K, V] = createKafkaProducer()
@@ -69,11 +72,11 @@ class KafkaProducerService[K, V](config: Configuration,
     val record = new ProducerRecord[K, V](topic, key, value)
     try {
       val metadata = kafkaProducer.send(record).get() // Synchronous blocking send
-      messagesSent.mark() // Mark message as sent successfully
+      messagesSent.increment() // Mark message as sent successfully
       metadata
     } catch {
       case ex: Exception =>
-        messagesFailed.mark() // Mark message failure
+        messagesFailed.increment() // Mark message failure
         throw ex
     }
   }
@@ -86,10 +89,10 @@ class KafkaProducerService[K, V](config: Configuration,
     val callback = new Callback {
       def onCompletion(metadata: RecordMetadata, exception: Exception): Unit = {
         if (exception != null) {
-          messagesFailed.mark() // Mark failure
+          messagesFailed.increment() // Mark failure
           promise.failure(exception)
         } else {
-          messagesSent.mark() // Mark success
+          messagesSent.increment() // Mark success
           promise.success(metadata)
         }
       }

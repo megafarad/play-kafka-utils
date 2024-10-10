@@ -9,7 +9,7 @@ scalaVersion := "2.13.15"
 libraryDependencies += guice
 libraryDependencies += "org.scalatestplus.play" %% "scalatestplus-play" % "7.0.1" % Test
 libraryDependencies += "org.apache.kafka" % "kafka-clients" % "3.8.0"
-libraryDependencies += "io.dropwizard.metrics" % "metrics-core" % "4.2.25"
+libraryDependencies += "io.micrometer" % "micrometer-core" % "1.13.1"
 libraryDependencies ++= Seq(
   "com.fasterxml.jackson.core" % "jackson-core" % "2.17.2",
   "com.fasterxml.jackson.core" % "jackson-databind" % "2.17.0",

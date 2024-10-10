@@ -1,6 +1,6 @@
 package com.megafarad.play.kafka.services
 
-import com.codahale.metrics.{Gauge, Meter, MetricRegistry, Timer}
+import io.micrometer.core.instrument.{Counter, Gauge, MeterRegistry, Timer}
 import org.apache.kafka.clients.CommonClientConfigs
 import org.apache.kafka.clients.consumer.{ConsumerConfig, ConsumerRecords, KafkaConsumer, OffsetAndMetadata}
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig, ProducerRecord}
@@ -11,6 +11,7 @@ import play.api.inject.ApplicationLifecycle
 import play.api.{Configuration, Logging}
 
 import java.util.Properties
+import java.util.function.ToDoubleFunction
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
@@ -19,7 +20,7 @@ import scala.util.{Failure, Success, Try}
 class KafkaConsumerService[K, V](messageHandlerService: KafkaMessageHandlerService[K, V],
                                  config: Configuration,
                                  consumerConfig: Configuration,
-                                 metrics: MetricRegistry,
+                                 metrics: MeterRegistry,
                                  applicationLifecycle: ApplicationLifecycle)(implicit system: ActorSystem, ec: ExecutionContext)
   extends Logging {
 
@@ -47,22 +48,20 @@ class KafkaConsumerService[K, V](messageHandlerService: KafkaMessageHandlerServi
   val deadLetterTopic: String = consumerConfig.get[String]("dead-letter-topic")
 
   // Metrics
-  val messagesProcessed: Meter = metrics.meter(s"kafka.$groupId.messages-processed")
-  val messagesFailed: Meter = metrics.meter(s"kafka.$groupId.messages-failed")
-  val messagesRetried: Meter = metrics.meter(s"kafka.$groupId.messages-retried")
-  val messagesDeadLettered: Meter = metrics.meter(s"kafka.$groupId.messages-dead-lettered")
-  val processingTimer: Timer = metrics.timer(s"kafka.$groupId.message-processing-time")
-  val pollTimer: Timer = metrics.timer(s"kafka.$groupId.poll-duration")
+  val messagesProcessed: Counter = Counter.builder("kafka.messages-processed").tag("groupId", groupId).register(metrics)
+  val messagesFailed: Counter = Counter.builder("kafka.messages-failed").tag("groupId", groupId).register(metrics)
+  val messagesRetried: Counter = Counter.builder("kafka.messages-retried").tag("groupId", groupId).register(metrics)
+  val messagesDeadLettered: Counter = Counter.builder("kafka.messages-dead-lettered").tag("groupId", groupId)
+    .register(metrics)
+  val processingTimer: Timer = Timer.builder("kafka.message-processing-time").tag("groupId", groupId).register(metrics)
+  val pollTimer: Timer = Timer.builder("kafka.poll-duration").tag("groupId", groupId).register(metrics)
 
   // Create a Gauge to track consumer lag
-  val existingLagGauge: Gauge[_] = metrics.getGauges.get(s"kafka.$groupId.consumer-lag")
-  val consumerLagGauge: Gauge[Long] = if (existingLagGauge != null) {
-    existingLagGauge.asInstanceOf[Gauge[Long]]
-  } else {
-    metrics.register(s"kafka.$groupId.consumer-lag", new Gauge[Long] {
-      override def getValue: Long = calculateConsumerLag()
-    })
+  val consumerLagFunction: ToDoubleFunction[KafkaConsumerService[K, V]] = (service: KafkaConsumerService[K, V]) => {
+    service.calculateConsumerLag().toDouble
   }
+  val consumerLagGauge: Gauge = Gauge.builder("kafka.consumer-lag", this, consumerLagFunction).tag("groupId", groupId)
+    .register(metrics)
 
   // Kafka consumer instance
   val kafkaConsumer: KafkaConsumer[K, V] = createKafkaConsumer()
@@ -137,7 +136,7 @@ class KafkaConsumerService[K, V](messageHandlerService: KafkaMessageHandlerServi
       _ <- processRecords(records).andThen {
         case Failure(ex) if attempt <= maxRetries =>
           val backoffTime = baseDelay * math.pow(2, attempt - 1).toLong
-          messagesRetried.mark()
+          messagesRetried.increment()
 
           if (isRunning) {
             logger.warn(s"Polling failed. Retrying in $backoffTime... (Attempt $attempt)", ex)
@@ -174,18 +173,18 @@ class KafkaConsumerService[K, V](messageHandlerService: KafkaMessageHandlerServi
   }
 
   private def pollKafka(): Future[ConsumerRecords[K, V]] = {
-    val context = pollTimer.time()
+    val context = Timer.start(metrics)
     Future {
       Try {
         kafkaConsumer.poll(java.time.Duration.ofMillis(100))
       } match {
         case Failure(exception) =>
           logger.error("Failure while polling Kafka: ", exception)
-          context.stop()
+          context.stop(pollTimer)
           throw exception
         case Success(records) =>
           logger.info(s"Polled ${records.count()} records from Kafka.")
-          context.stop()
+          context.stop(pollTimer)
           records
       }
     }
@@ -193,16 +192,16 @@ class KafkaConsumerService[K, V](messageHandlerService: KafkaMessageHandlerServi
 
   private def processRecords(records: ConsumerRecords[K, V]): Future[Unit] = {
     val futures = records.asScala.map { record =>
-      val processingContext = processingTimer.time() // Start timing message processing
+      val processingContext = Timer.start(metrics) // Start timing message processing
       messageHandlerService.processMessage(record.key(), record.value()).andThen {
         case Success(_) =>
-          processingContext.stop() // Stop message processing timer
-          messagesProcessed.mark()
+          processingContext.stop(processingTimer) // Stop message processing timer
+          messagesProcessed.increment()
           logger.info(s"Successfully processed message from topic=${record.topic()}, partition=${record.partition()}, offset=${record.offset()}, key=${record.key()}")
 
         case Failure(ex) =>
-          processingContext.stop() // Stop message processing timer
-          messagesFailed.mark()
+          processingContext.stop(processingTimer) // Stop message processing timer
+          messagesFailed.increment()
           logger.error(s"Failed to process message from topic=${record.topic()}, partition=${record.partition()}, offset=${record.offset()}, key=${record.key()}", ex)
           records.partitions().forEach {
             partition =>
@@ -232,7 +231,7 @@ class KafkaConsumerService[K, V](messageHandlerService: KafkaMessageHandlerServi
 
       kafkaConsumer.seek(new TopicPartition(record.topic(), record.partition()), new OffsetAndMetadata(record.offset() + 1))
 
-      messagesDeadLettered.mark() // Track the number of dead-lettered messages
+      messagesDeadLettered.increment() // Track the number of dead-lettered messages
     }
   }
 

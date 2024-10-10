@@ -1,8 +1,8 @@
 package com.megafarad.play.kafka.services
 
-import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.ConfigFactory
 import io.github.embeddedkafka.EmbeddedKafka
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.apache.kafka.common.serialization.StringDeserializer
 import org.scalatest.concurrent.{Eventually, ScalaFutures}
 import org.scalatest.wordspec.AnyWordSpec
@@ -21,7 +21,7 @@ class KafkaProducerServiceSpec extends AnyWordSpec with EmbeddedKafka with Scala
   val topic = "topic1"
   val config: Configuration = Configuration(ConfigFactory.parseResources("reference.conf"))
   val producerConfig: Configuration = config.get[Configuration]("kafka.producer1")
-  val metrics = new MetricRegistry()
+  val metrics = new SimpleMeterRegistry()
   val applicationLifecycle = new DefaultApplicationLifecycle()
   implicit val deserializer: StringDeserializer = new StringDeserializer()
 
