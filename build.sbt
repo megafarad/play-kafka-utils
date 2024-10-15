@@ -15,5 +15,6 @@ libraryDependencies ++= Seq(
   "com.fasterxml.jackson.core" % "jackson-databind" % "2.17.0",
   "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.17.2"
 )
+libraryDependencies += "net.codingwell" %% "scala-guice" % "6.0.0"
 libraryDependencies += "com.typesafe" % "config" % "1.4.3"
 libraryDependencies += "io.github.embeddedkafka" %% "embedded-kafka" % "3.8.0" % Test

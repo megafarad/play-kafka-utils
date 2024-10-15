@@ -12,16 +12,18 @@ import play.api.{Configuration, Logging}
 
 import java.util.Properties
 import java.util.function.ToDoubleFunction
+import javax.inject.Inject
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
 import scala.util.{Failure, Success, Try}
 
-class KafkaConsumerService[K, V](messageHandlerService: KafkaMessageHandlerService[K, V],
-                                 config: Configuration,
-                                 consumerConfig: Configuration,
-                                 metrics: MeterRegistry,
-                                 applicationLifecycle: ApplicationLifecycle)(implicit system: ActorSystem, ec: ExecutionContext)
+class KafkaConsumerService[K, V] @Inject()(messageHandlerService: KafkaMessageHandlerService[K, V],
+                                           config: Configuration,
+                                           consumerConfig: Configuration,
+                                           metrics: MeterRegistry,
+                                           applicationLifecycle: ApplicationLifecycle)(implicit system: ActorSystem,
+                                                                                                ec: ExecutionContext)
   extends Logging {
 
   val bootstrapServers: String = config.get[String]("kafka.bootstrap.servers")

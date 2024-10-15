@@ -8,14 +8,15 @@ import play.api.Configuration
 import play.api.inject.ApplicationLifecycle
 
 import java.util.Properties
+import javax.inject.Inject
 import scala.collection.immutable
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.jdk.CollectionConverters._
 
-class KafkaProducerService[K, V](config: Configuration,
-                                 producerConfig: Configuration,
-                                 metrics: MeterRegistry,
-                                 applicationLifecycle: ApplicationLifecycle)(implicit ec: ExecutionContext) {
+class KafkaProducerService[K, V] @Inject()(config: Configuration,
+                                           producerConfig: Configuration,
+                                           metrics: MeterRegistry,
+                                           applicationLifecycle: ApplicationLifecycle)(implicit ec: ExecutionContext) {
 
   val bootstrapServers: String = config.get[String]("kafka.bootstrap.servers")
   val securityProtocol: Option[String] = config.getOptional[String]("kafka.security.protocol")
