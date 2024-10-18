@@ -35,8 +35,11 @@ class KafkaProducerService[K, V] @Inject()(config: Configuration,
   val lingerMs: Int = producerConfig.getOptional[Int]("linger.ms").getOrElse(1)
   val keySerializer: String = producerConfig.get[String]("key.serializer")
   val valueSerializer: String = producerConfig.get[String]("value.serializer")
-  val metricsTags: immutable.Iterable[Tag] = producerConfig.get[Map[String, String]]("metrics.tags").map {
-    case (key, value) => Tag.of(key, value)
+  val metricsTags: immutable.Iterable[Tag] = producerConfig.getOptional[Map[String, String]]("metrics.tags") match {
+    case Some(tags) => tags.map {
+      case (key, value) => Tag.of(key, value)
+    }
+    case None => immutable.Iterable.empty
   }
 
   // Metrics to track messages sent and failed
