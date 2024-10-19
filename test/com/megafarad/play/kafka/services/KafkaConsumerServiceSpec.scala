@@ -45,9 +45,10 @@ class KafkaConsumerServiceSpec extends AnyWordSpec with MockitoSugar with Loggin
           producer => producer.send(new ProducerRecord[String, String]("topic1", testKey, testValue))
         }
 
-        //Act - the mere act of instantiating the class should start polling.
+        //Act
         val service = new KafkaConsumerService[String, String](messageHandlerService, config, consumerConfig, metrics,
           applicationLifecycle)
+        service.startPolling()
 
         //Assert
         eventually(timeout(30.seconds)) {
@@ -77,6 +78,7 @@ class KafkaConsumerServiceSpec extends AnyWordSpec with MockitoSugar with Loggin
         //Act
         val service = new KafkaConsumerService[String, String](messageHandlerService, config, consumerConfig, metrics,
           applicationLifecycle)
+        service.startPolling()
 
         //Assert
         EmbeddedKafka.withConsumer[String, String, org.scalatest.Assertion] {
