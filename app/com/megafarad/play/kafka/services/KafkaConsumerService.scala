@@ -118,8 +118,6 @@ class KafkaConsumerService[K, V] @Inject()(messageHandlerService: KafkaMessageHa
 
   @volatile private var isRunning: Boolean = true
 
-  startPolling()
-
   applicationLifecycle.addStopHook(() => Future {
     stopPolling()
     kafkaConsumer.wakeup()
