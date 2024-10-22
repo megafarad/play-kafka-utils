@@ -2,7 +2,7 @@ package com.megafarad.play.kafka.module
 
 import com.google.inject.name.Named
 import com.google.inject.{AbstractModule, Provides, Singleton}
-import com.megafarad.play.kafka.services.{KafkaConsumerService, KafkaMessageHandlerService, KafkaProducerService}
+import com.megafarad.play.kafka.services.{KafkaConsumerService, KafkaConsumerStartupService, KafkaMessageHandlerService, KafkaProducerService, StartupService}
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import net.codingwell.scalaguice.ScalaModule
@@ -23,6 +23,7 @@ class TestModule extends AbstractModule with ScalaModule with Logging {
     })
     bind[KafkaMessageHandlerService[String, String]].toInstance(messageHandler)
     bind[MeterRegistry].toInstance(new SimpleMeterRegistry())
+    bind[KafkaConsumerStartupService].to[StartupService].asEagerSingleton()
   }
 
   @Provides
