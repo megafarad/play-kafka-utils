@@ -1,12 +1,13 @@
 package com.megafarad.play.kafka.services
 
+import com.megafarad.play.kafka.model.KafkaMessage
 import com.typesafe.config.ConfigFactory
 import io.github.embeddedkafka.EmbeddedKafka
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.serialization.{StringDeserializer, StringSerializer}
 import org.apache.pekko.actor.ActorSystem
-import org.mockito.Mockito
+import org.mockito.{ArgumentMatchers, Mockito}
 import org.scalatest.concurrent.{Eventually, ScalaFutures}
 import org.scalatest.wordspec.AnyWordSpec
 import org.scalatestplus.mockito.MockitoSugar
@@ -40,7 +41,7 @@ class KafkaConsumerServiceSpec extends AnyWordSpec with MockitoSugar with Loggin
       withRunningKafka {
         //Arrange
         val messageHandlerService = mock[KafkaMessageHandlerService[String, String]]
-        Mockito.when(messageHandlerService.processMessage(testKey, testValue)).thenReturn(Future.successful(()))
+        Mockito.when(messageHandlerService.processMessage(ArgumentMatchers.any[KafkaMessage[String, String]])).thenReturn(Future.successful(()))
         EmbeddedKafka.withProducer[String, String, Unit] {
           producer => producer.send(new ProducerRecord[String, String]("topic1", testKey, testValue))
         }
@@ -52,7 +53,7 @@ class KafkaConsumerServiceSpec extends AnyWordSpec with MockitoSugar with Loggin
 
         //Assert
         eventually(timeout(30.seconds)) {
-          Mockito.verify(messageHandlerService, Mockito.times(1)).processMessage(testKey, testValue)
+          Mockito.verify(messageHandlerService, Mockito.times(1)).processMessage(ArgumentMatchers.any[KafkaMessage[String, String]])
           succeed
         }
 
@@ -69,7 +70,7 @@ class KafkaConsumerServiceSpec extends AnyWordSpec with MockitoSugar with Loggin
       withRunningKafka {
         //Arrange
         val messageHandlerService = mock[KafkaMessageHandlerService[String, String]]
-        Mockito.when(messageHandlerService.processMessage(testKey, testValue))
+        Mockito.when(messageHandlerService.processMessage(ArgumentMatchers.any[KafkaMessage[String, String]]))
           .thenReturn(Future.failed(new RuntimeException("Failed to process message")))
         EmbeddedKafka.withProducer[String, String, Unit] {
           producer => producer.send(new ProducerRecord[String, String]("topic1", testKey, testValue))

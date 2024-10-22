@@ -1,5 +1,6 @@
 package com.megafarad.play.kafka.services
 
+import com.megafarad.play.kafka.model.KafkaMessage
 import io.micrometer.core.instrument.{Counter, Gauge, MeterRegistry, Timer}
 import org.apache.kafka.clients.CommonClientConfigs
 import org.apache.kafka.clients.consumer.{ConsumerConfig, ConsumerRecords, KafkaConsumer, OffsetAndMetadata}
@@ -193,7 +194,7 @@ class KafkaConsumerService[K, V] @Inject()(messageHandlerService: KafkaMessageHa
   private def processRecords(records: ConsumerRecords[K, V]): Future[Unit] = {
     val futures = records.asScala.map { record =>
       val processingContext = Timer.start(metrics) // Start timing message processing
-      messageHandlerService.processMessage(record.key(), record.value()).andThen {
+      messageHandlerService.processMessage(KafkaMessage.ofConsumerRecord(record)).andThen {
         case Success(_) =>
           processingContext.stop(processingTimer) // Stop message processing timer
           messagesProcessed.increment()

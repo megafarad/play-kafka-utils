@@ -87,14 +87,15 @@ This sample implements a message handler that simply logs the Kafka message:
 
 ```scala
 import com.megafarad.play.kafka.services.KafkaMessageHandlerService
+import com.megafarad.play.kafka.model.KafkaMessage
 import play.api.Logging
 
 import javax.inject.Inject
 import scala.concurrent.Future
 
 class SampleKafkaMessageHandlerService @Inject() extends KafkaMessageHandlerService[String, String] with Logging {
-  def processMessage(key: String, value: String): Future[Unit] = Future.successful({
-    logger.info(s"Processed message $key -> $value")
+  def processMessage(message: KafkaMessage[String, String]): Future[Unit] = Future.successful({
+    logger.info(s"Processed message ${message.key} -> ${message.value}")
   })
 }
 ```
