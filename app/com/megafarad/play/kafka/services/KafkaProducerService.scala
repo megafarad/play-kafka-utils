@@ -13,6 +13,17 @@ import scala.collection.immutable
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.jdk.CollectionConverters._
 
+/**
+ * A service for users to produce Kafka messages on a given topic.
+ *
+ * @param config                The entire application config
+ * @param producerConfig        The configuration specific to this producer
+ * @param metrics               A Micrometer [[MeterRegistry]]
+ * @param applicationLifecycle  A Play Framework [[ApplicationLifecycle]]
+ * @param ec                    An ExecutionContext
+ * @tparam K                    The message key type
+ * @tparam V                    The message value type
+ */
 class KafkaProducerService[K, V] @Inject()(config: Configuration,
                                            producerConfig: Configuration,
                                            metrics: MeterRegistry,
@@ -71,7 +82,14 @@ class KafkaProducerService[K, V] @Inject()(config: Configuration,
     new KafkaProducer[K, V](props)
   }
 
-  // Synchronously send a message to a Kafka topic
+  /**
+   * Synchronously send a message to a Kafka topic
+   *
+   * @param topic   The topic to send a message to
+   * @param key     The message key
+   * @param value   The message value
+   * @return        The message's [[RecordMetadata]] provided by the Kafka API
+   */
   def sendSync(topic: String, key: K, value: V): RecordMetadata = {
     val record = new ProducerRecord[K, V](topic, key, value)
     try {
@@ -85,7 +103,14 @@ class KafkaProducerService[K, V] @Inject()(config: Configuration,
     }
   }
 
-  // Asynchronously send a message to Kafka with a Future result
+  /**
+   * Asynchronously send a message to Kafka with a Future result
+   *
+   * @param topic   The topic to send a message to
+   * @param key     The message key
+   * @param value   The message value
+   * @return        A Future of the message's [[RecordMetadata]] provided by the Kafka API
+   */
   def sendAsync(topic: String, key: K, value: V): Future[RecordMetadata] = {
     val record = new ProducerRecord[K, V](topic, key, value)
     val promise = Promise[RecordMetadata]()

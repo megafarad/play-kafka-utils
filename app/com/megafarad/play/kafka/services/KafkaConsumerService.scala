@@ -19,6 +19,19 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
 import scala.util.{Failure, Success, Try}
 
+/**
+ * A service that polls Kafka for messages and processes them using a `messageHandlerService`
+ *
+ * @param messageHandlerService The service that handles consumed messages
+ * @param config                The entire application config
+ * @param consumerConfig        The configuration specific to this consumer
+ * @param metrics               A Micrometer [[MeterRegistry]]
+ * @param applicationLifecycle  A Play Framework [[ApplicationLifecycle]]
+ * @param system                An ActorSystem
+ * @param ec                    An ExecutionContext
+ * @tparam K                    The message key type
+ * @tparam V                    The message value type
+ */
 class KafkaConsumerService[K, V] @Inject()(messageHandlerService: KafkaMessageHandlerService[K, V],
                                            config: Configuration,
                                            consumerConfig: Configuration,
@@ -109,6 +122,9 @@ class KafkaConsumerService[K, V] @Inject()(messageHandlerService: KafkaMessageHa
     new KafkaConsumer[K, V](props)
   }
 
+  /**
+   * Subscribes to topics and starts polling
+   */
   def startPolling(): Unit = {
     kafkaConsumer.subscribe(topics.asJava)
 
@@ -126,6 +142,9 @@ class KafkaConsumerService[K, V] @Inject()(messageHandlerService: KafkaMessageHa
     deadLetterProducer.close()
   })
 
+  /**
+   * Sets isRunning to false to stop polling.
+   */
   def stopPolling(): Unit = {
     isRunning = false
   }
