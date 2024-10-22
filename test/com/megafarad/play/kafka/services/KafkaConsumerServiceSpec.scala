@@ -87,7 +87,6 @@ class KafkaConsumerServiceSpec extends AnyWordSpec with MockitoSugar with Loggin
             eventually(timeout(1.minute)) {
               assert {
                 val records = consumer.poll(java.time.Duration.ofMillis(100))
-                logger.info(s"Records: ${records.asScala}")
                 records.count() == 1
               }
             }
