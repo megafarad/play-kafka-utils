@@ -102,7 +102,7 @@ class SampleKafkaMessageHandlerService @Inject() extends KafkaMessageHandlerServ
 
 ### **Step 3: Implement a startup service**
 
-This service starts polling in KafkaConsumerService instances.
+This service starts polling in KafkaConsumerService instances. The StartupService ensures that polling begins automatically when the Play application starts. Without it, consumers wouldn't start until explicitly invoked.
 
 ```scala
 import javax.inject.{Inject, Named}
@@ -141,6 +141,10 @@ class KafkaModule extends AbstractModule with ScalaModule {
     
   }
 
+  //Because KafkaConsumerService and KafkaProducerService require both general configuration and instance-specific 
+  //configuration, you need to use @Provides methods to inject the correct settings for each Kafka consumer and 
+  //producer.
+  
   //This binds KafkaConsumerService. You can bind multiple instances with multiple @Provides methods... 
   @Provides
   @Singleton
@@ -272,7 +276,8 @@ kafka.consumer {
 The retry logic is to increase the delay exponentially with each successive retry. With the above configuration, the 
 consumer will retry five times with the delay of 500ms, 1000ms, 2000ms, 4000ms, and 8000ms. 
 
-Messages that fail after maximum retries are sent to a **dead-letter topic**:
+Messages that fail after maximum retries are sent to a **dead-letter topic**, allowing you to inspect and handle failed 
+messages separately:
 ```hocon
 kafka.consumer.dead-letter-topic = "dead-letter-topic"
 ```
