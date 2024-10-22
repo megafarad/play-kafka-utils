@@ -13,7 +13,7 @@
 
 ## **Table of Contents**
 - [Installation](#installation)
-- [Quick Start](#quick-start)
+- [Quick Start](#usage-instructions)
 - [Configuration](#configuration)
 - [Metrics](#metrics)
 - [Error Handling and Retries](#error-handling-and-retries)
@@ -319,5 +319,5 @@ Contributions to **play-kafka-utils** are welcome! Feel free to submit issues, b
 
 ## **License**
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
