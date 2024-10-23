@@ -6,6 +6,8 @@ lazy val root = (project in file(".")).enablePlugins(PlayScala)
 
 scalaVersion := "2.13.15"
 
+crossPaths := false
+
 libraryDependencies += guice
 libraryDependencies += "org.scalatestplus.play" %% "scalatestplus-play" % "7.0.1" % Test
 libraryDependencies += "org.apache.kafka" % "kafka-clients" % "3.8.0"
